@@ -94,9 +94,9 @@ node scripts/replay.mjs
 
 ```
 packages/workmemory/
-├── lib/            23 个模块（采集/蒸馏/存储/检索/注入/安全/迁移）
+├── lib/            24 个模块（采集/蒸馏/存储/检索/注入/安全/迁移）
 ├── schema/         字段级 JSON Schema
-├── test/           370 项用例（9 个套件）+ 迁移夹具
+├── test/           370 项用例（12 个套件）+ 迁移夹具
 ├── sync.mjs        同步到 profile
 └── README.md       模块级说明
 scripts/            评估、回放、验收、探针

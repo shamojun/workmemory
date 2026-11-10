@@ -8,7 +8,7 @@
  *   2. **跨字段不变式**表达在这里（JSON Schema 写不动或写不清的）；
  *   3. 校验失败返回 { ok:false, errors:[...] }，不抛异常，由调用方决定拒绝还是降级。
  *
- * 冻结决议（见 WorkMemory-v3.1.2.1-final）：
+ * 冻结决议（契约见 schema/README.md）：
  *   C1 importance 保留枚举，数值仅派生
  *   C2 字段名统一 revision，读取兼容 rev
  *   C3 taskAssignment 权威，taskId 是镜像
