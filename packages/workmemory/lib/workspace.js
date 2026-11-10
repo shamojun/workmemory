@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { ensureDir, hashIdentity, memoryDir, readIdentity, writeIdentity } from './store.js'
+import { resolveWorkspaceKey } from './storage.js'
 
 export function normalizeRoot(p) {
   let r
@@ -55,7 +56,20 @@ export function resolveWorkspace(cwd, config) {
     if (!root) root = start
   }
 
-  return attachIdentity(root, config)
+  // 钥匙：宿主登记表 → workspaceId；未登记时由 resolveWorkspaceKey 兜底
+  const resolved = resolveWorkspaceKey(root)
+  // 命中登记时以登记根为准：子目录启动也落在同一份数据上
+  const effectiveRoot = resolved.registered ? resolved.root : root
+  const scoped = { ...config, __workspaceKey: resolved.key }
+  const out = attachIdentity(effectiveRoot, scoped)
+  return {
+    ...out,
+    key: resolved.key,
+    title: resolved.title,
+    registered: resolved.registered,
+    identityRoot: resolved.root,
+    config: scoped,
+  }
 }
 
 export function attachIdentity(root, config) {

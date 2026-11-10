@@ -78,7 +78,7 @@ const ctx = {
   logger: { info() {}, warn() {}, error() {} },
 }
 
-apply(ctx, { workspace: { root }, ingest: { historyDays: 30 }, distill: { debounceMs: 50, autoBackfill: false } })
+apply(ctx, { workspace: { root }, storage: { location: 'workspace' }, ingest: { historyDays: 30 }, distill: { debounceMs: 50, autoBackfill: false } })
 
 const emit = (name, ...args) => (handlers.get(name) ?? []).forEach((fn) => fn(...args))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -114,8 +114,8 @@ check('brief mentions last work', brief.includes('开始搭索引器'), brief.sl
 check('brief within budget', brief.length <= 3601, brief.length)
 
 // 命令
-const status = await commandDef.handler({ agent: { session }, rawInput: 'status' })
-check('status ok', status.kind === 'success' && status.text.includes('workspace:'), status.text)
+const status = await commandDef.handler({ agent: { session }, rawInput: 'doctor' })
+check('doctor ok', status.kind === 'success' && status.text.includes('条目'), status.text)
 const briefCmd = await commandDef.handler({ agent: { session }, rawInput: 'brief' })
 check('brief cmd ok', briefCmd.kind === 'success' && briefCmd.text.includes('WorkMemory'))
 
@@ -130,7 +130,7 @@ check('incremental cursor', digest2.seq === 4, digest2.seq)
 
 // 幂等：重复回填不重复计数
 const again = await commandDef.handler({ agent: { session }, rawInput: 'backfill' })
-check('backfill idempotent', again.kind === 'success', again.text)
+check('removed command rejected', again.kind === 'error', again.text)
 
 /* ── B1：规则抽取 + 记忆项 ─────────────────────────────────── */
 const userEvent = (seq, text) => ({ seq, type: 'user/message', data: { content: [{ type: 'text', text }], source: { kind: 'user' } } })
@@ -178,8 +178,8 @@ check('brief has constraint section', briefWithItems.includes('约束：'), brie
 check('brief has decision section', briefWithItems.includes('关键决策：'))
 check('brief cites item id', /\[M[0-9a-z]{4}/.test(briefWithItems), briefWithItems.slice(0, 400))
 
-const itemsCmd = await commandDef.handler({ agent: { session }, rawInput: 'items decision' })
-check('items command', itemsCmd.kind === 'success' && itemsCmd.text.includes('decision'), itemsCmd.text.slice(0, 200))
+const itemsCmd = await commandDef.handler({ agent: { session }, rawInput: 'review' })
+check('review command', itemsCmd.kind === 'success', itemsCmd.text.slice(0, 200))
 
 // 子句级抽取：一条消息里塞多个意图时，只取命中子句
 emit('session/event', session, userEvent(30, '@tldr需求案例文档.md 根据该文档方案，实现 DSH 插件，作为记忆插件 还是查询改写插件好，所有实现不依赖单独第三方服务 ，比如数据库，redis 等，给出方案'))

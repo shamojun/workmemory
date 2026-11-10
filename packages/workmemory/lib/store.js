@@ -5,11 +5,18 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { dataDirFor, pathHash } from './storage.js'
 
 export const SCHEMA_VERSION = 2
 
+/** 数据目录：默认用户目录，可按 storage.location 放回工作区（见设计文档 §5）。 */
 export function memoryDir(root, config) {
-  return path.join(root, ...config.storage.dir.split('/'))
+  const key = config.__workspaceKey ?? fallbackKey(root)
+  return dataDirFor({ workspaceRoot: root, key, location: config.storage.location ?? 'global' })
+}
+
+function fallbackKey(root) {
+  return `unreg-${pathHash(root)}`
 }
 
 export function ensureDir(dir) {
@@ -122,7 +129,7 @@ export function loadManifest(dir) {
   const file = path.join(dir, 'manifest.json')
   const m = readJson(file, null)
   // 注意：**不要**因为 schemaVersion 不等于当前版本就重置。
-  // v1→v2 迁移由 lib/migrate.js 负责；这里若重置会丢掉游标并写回旧版本，
+  // 版本号只做校验与提示，不重置数据：重置会丢掉游标
   // 等于把迁移成果抹掉（实机踩坑）。
   if (!m || typeof m !== 'object') {
     return { schemaVersion: SCHEMA_VERSION, createdAt: Date.now(), cursors: {}, stats: {}, lastBackfillAt: null }

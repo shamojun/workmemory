@@ -6,7 +6,6 @@ archive/
 
 # 文档产物（Word 由 md 生成）
 *.docx
-docs/archive/
 
 # 依赖与杂项
 node_modules/
@@ -14,4 +13,3 @@ node_modules/
 *.tmp-*
 .DS_Store
 Thumbs.db
-docs/private/

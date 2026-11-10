@@ -203,7 +203,7 @@ export function buildBrief({ ws, digests, items = [], config, now = Date.now(), 
     return `- ${cut(x.item.text, LIM.textMax)}${cite(x.item)}${extra}`
   }
 
-  // v3：知识形态优先注入（设计文档 v2.0 §5.1）
+  // 知识形态优先注入（见设计文档 §6.1）
   const kinded = active.filter((i) => typeof i.knowledgeKind === 'string')
   const byKind = (k) => orderBy(kinded.filter((i) => i.knowledgeKind === k && (okFact(i) || okBasis(i))))
   const rationales = byKind('rationale')

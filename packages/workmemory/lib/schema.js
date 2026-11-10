@@ -329,7 +329,7 @@ export function mergePrecedence(a, b) {
 /**
  * 把任意形状的 item 补齐成 v2 结构。
  *
- * 与 normalizeItemV1 的区别：
+ * 与旧形状归一化的区别：
  *   - 那是"迁移存量"，证据一律 stale（还没回读源会话）；
  *   - 这是"新写入"，证据刚过 quoteMatches 校验，因此 verifyState=verified。
  *
@@ -471,70 +471,6 @@ export function coerceTaskV2(task, { now = Date.now() } = {}) {
 
 /* ── 迁移（v1 → v2） ─────────────────────────────────────── */
 
-/**
- * 旧条目归一化。关键决议：
- *   - authority=user_confirmed 且有确认记录 → confirmed
- *   - authority=user_confirmed 但无确认记录 → user_derived + unconfirmed（禁止 rev>1 推确认）
- *   - 旧 taskId 一律重算归属：无支持 → unresolved
- */
-export function normalizeItemV1(item, { now = Date.now(), hasConfirmRecord = false } = {}) {
-  const legacyAuthority = item.authority
-  let source = 'user'
-  let authority = 'user_explicit'
-  let confirmationStatus = 'unconfirmed'
-
-  if (legacyAuthority === 'assistant') { source = 'assistant'; authority = 'assistant' }
-  else if (legacyAuthority === 'user_confirmed') {
-    if (hasConfirmRecord) { source = 'user'; authority = 'user_explicit'; confirmationStatus = 'confirmed' }
-    else { source = 'user'; authority = 'user_derived' }
-  } else if (legacyAuthority === 'user_historical') { source = 'user'; authority = 'user_derived' }
-  else { source = 'user'; authority = 'user_explicit' }
-
-  const isDecision = item.type === 'decision'
-  const assertionMode = isDecision ? 'decision' : 'fact_assertion'
-  const revision = item.revision ?? item.rev ?? 1
-  const status = confirmationStatus === 'confirmed' ? 'active' : (item.status ?? 'pending')
-
-  // 证据升级：补齐 id / sourceRole / verifyState。
-  // 迁移时还没有回读源会话，所以 verifyState 只能是 stale（待重新验证），不能假装 verified。
-  const evidence = (item.evidence ?? []).map((e, i) => ({
-    id: e.id ?? `ev_${String(e.sessionId ?? 's').slice(0, 8)}_${e.seq ?? i}`,
-    sessionId: e.sessionId,
-    seq: e.seq,
-    sourceRole: e.sourceRole ?? (e.role === 'assistant' ? 'assistant' : e.role === 'tool' ? 'tool' : 'user'),
-    quote: e.quote,
-    sourceHash: e.sourceHash ?? null,
-    quoteHash: e.quoteHash ?? null,
-    sourceVersion: e.sourceVersion ?? 'session_v1',
-    verifyState: e.verifyState ?? 'stale',
-    createdAt: e.createdAt ?? item.createdAt ?? now,
-    verifiedAt: e.verifiedAt ?? null,
-  }))
-
-  return {
-    ...item,
-    schemaVersion: SCHEMA_VERSION,
-    source,
-    authority,
-    origin: item.origin ?? 'migration',
-    confirmationStatus,
-    assertionMode,
-    importance: IMPORTANCE.includes(item.importance) ? item.importance : 'medium',
-    confidence: isNum(item.confidence) ? item.confidence : 0.8,
-    status,
-    revision,
-    rev: undefined,
-    evidence,
-    taskId: null,
-    taskAssignment: { status: 'unresolved', taskId: null, confidence: 0, reason: 'insufficient-evidence', supportingEvidence: [], candidateTaskIds: [] },
-    decision: isDecision
-      ? { scope: item.decisionScope === 'temporary' ? 'temporary' : 'permanent', status: 'active', validFrom: item.createdAt ?? now, validUntil: item.decisionScope === 'temporary' ? (item.overrideUntil ?? null) : null }
-      : null,
-    observedAt: item.observedAt ?? item.createdAt ?? now,
-    recordedAt: item.recordedAt ?? item.updatedAt ?? now,
-    provenance: { firstSeenAt: item.createdAt ?? now, sourceKinds: [source], mergeCount: 1 },
-  }
-}
 
 /** 队列项归一化（v1 的 done/failed/cursorSeq → v2 的双游标与六态）。 */
 export function coerceQueueItemV2(s, { now = Date.now() } = {}) {

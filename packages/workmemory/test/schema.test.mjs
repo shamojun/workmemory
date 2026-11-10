@@ -11,7 +11,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   validateItem, validateTask, validateQueueItem, validateEvidence,
-  deriveImportanceScore, deriveUsagePolicy, mergePrecedence, normalizeItemV1,
+  deriveImportanceScore, deriveUsagePolicy, mergePrecedence,
   SCHEMA_VERSION,
 } from '../lib/schema.js'
 
@@ -161,27 +161,6 @@ check('committed > read rejected', !validateQueueItem(baseQueue({ readCursorSeq:
 check('retry_wait requires nextRetryAt', !validateQueueItem(baseQueue({ state: 'retry_wait' })).ok)
 check('completed forbids nextRetryAt', !validateQueueItem(baseQueue({ state: 'completed', nextRetryAt: now })).ok)
 check('completed forbids currentChunkId', !validateQueueItem(baseQueue({ state: 'completed', currentChunkId: 'c1' })).ok)
-
-/* ── 迁移（fixtures） ── */
-{
-  const raw = fs.readFileSync(path.join(here, 'fixtures', 'v1-item.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
-  const confirmed = normalizeItemV1(raw[1], { hasConfirmRecord: true })
-  check('migrate confirmed keeps confirmed', confirmed.confirmationStatus === 'confirmed' && confirmed.status === 'active', confirmed.confirmationStatus)
-
-  const notConfirmed = normalizeItemV1(raw[1], { hasConfirmRecord: false })
-  check('migrate user_confirmed without record → user_derived', notConfirmed.authority === 'user_derived' && notConfirmed.confirmationStatus === 'unconfirmed', notConfirmed.authority)
-  check('migrate does not infer confirm from rev', notConfirmed.confirmationStatus === 'unconfirmed' && raw[1].rev === 3)
-
-  const assistant = normalizeItemV1(raw[2])
-  check('migrate assistant source', assistant.source === 'assistant' && assistant.authority === 'assistant', assistant.source)
-
-  const explicit = normalizeItemV1(raw[0])
-  check('migrate explicit source', explicit.source === 'user' && explicit.authority === 'user_explicit', explicit.authority)
-  check('migrate assigns unresolved', explicit.taskAssignment.status === 'unresolved' && explicit.taskId === null)
-
-  const normalized = [explicit, notConfirmed, assistant].map((it) => validateItem(it))
-  check('migrated items validate', normalized.every((r) => r.ok), normalized.map((r) => r.errors))
-}
 
 /* ── S1b：加载时自愈混合形状 ─────────────────────────────── */
 {

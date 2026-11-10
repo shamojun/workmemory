@@ -1,5 +1,5 @@
 /**
- * v3 知识形态（设计文档 v2.0 P0-1）。
+ * 知识形态（见设计文档 §3）。
  *   node packages/workmemory/test/s8.test.mjs
  */
 import { validateItem, coerceItemV2, SCHEMA_VERSION } from '../lib/schema.js'

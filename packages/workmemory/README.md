@@ -28,8 +28,9 @@ DSH 工作区隐式长期记忆插件：不让用户管理记忆，而是让 Age
 | 知识 | `knowledge.js` | 知识形态枚举、推断、值类判定、`splitBecause` |
 | 存储 | `items.js` | 事实层：追加写、去重、取代、压实、归属重算、kind 回填 |
 | 存储 | `entities.js` | 实体层：任务状态机、进度、快照、衰减 |
-| 存储 | `store.js` | 目录、原子写、单写者锁（pid + 租约 + lockEpoch） |
-| 契约 | `schema.js` | 枚举、字段与跨字段校验、五维、归一化与迁移 |
+| 存储 | `storage.js` | 数据目录解析（global/workspace）、工作区钥匙、索引、按路径重绑 |
+| 存储 | `store.js` | 原子写、单写者锁（pid + 租约 + lockEpoch） |
+| 契约 | `schema.js` | 枚举、字段与跨字段校验、五维、归一化 |
 | 契约 | `model.js` | 候选 → Item 构造 |
 | 检索 | `retrieval.js` | 词法 + 同义词 + 任务亲和度；按策略过滤 |
 | 检索 | `cluster.js` | 读时折叠（同事件分组 + 标识符/极性守卫） |
@@ -38,7 +39,6 @@ DSH 工作区隐式长期记忆插件：不让用户管理记忆，而是让 Age
 | 回填 | `backfill.js` | 队列六态 + 双游标 |
 | 安全 | `safety.js` | 路径边界 |
 | 安全 | `injection.js` | 历史注入过滤 |
-| 迁移 | `migrate.js` | v1 → v2 → v3 自动迁移 |
 | 工具 | `tools.js` | `memory_recall` / `memory_status` / `memory_timeline` / `memory_task` |
 | 观测 | `trace.js` · `log.js` | 结构化 trace + 日志 |
 | 解析 | `workspace.js` | 工作区身份解析 |
@@ -121,7 +121,6 @@ DSH 工作区隐式长期记忆插件：不让用户管理记忆，而是让 Age
 | 读时折叠 | 同一件事的多种说法只占一行（标注"另 N 条相似"） |
 | 回填双游标 | `readCursorSeq` 与 `committedCursorSeq` 分离，先写事实再提交 |
 | 状态衰减 | 14 天无活动 → `paused`，并解除当前任务绑定 |
-| 迁移自愈 | 版本落后自动迁移（校验→备份→原子替换→失败只读） |
 
 ---
 
@@ -131,7 +130,7 @@ DSH 工作区隐式长期记忆插件：不让用户管理记忆，而是让 Age
 for f in packages/workmemory/test/*.test.mjs; do node "$f"; done
 ```
 
-12 个套件 · 370 项用例：`offline` `schema` `migrate` `s1c` `s2` `s3` `s4a` `s5` `s6` `s7` `s8` `s9`。
+12 个套件 · 367 项用例：`offline` `schema` `s1c` `s2` `s3` `s4a` `s5` `s6` `s7` `s8` `s9` `s10`。
 
 ---
 

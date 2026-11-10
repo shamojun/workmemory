@@ -7,17 +7,18 @@
 import { resolveConfig } from './config.js'
 import { createLogger } from './log.js'
 import { resolveWorkspace } from './workspace.js'
+import { rebindByRoot, readHostRegistry, readIndex, storageBase, upsertIndex, dshHome } from './storage.js'
 import { Ingestor } from './ingest.js'
 import { ItemsStore } from './items.js'
 import { RULES_VERSION } from './rules.js'
 import { buildBrief, renderStatus } from './brief.js'
 import { search } from './retrieval.js'
 import { EntitiesStore } from './entities.js'
-import { migrateWorkspace, needsMigration } from './migrate.js'
 import { META_PATTERNS } from './distiller.js'
 import { assertInside, safeJoin } from './safety.js'
 import { detectTask, progressSignal, wantsRecall } from './continuity.js'
-import { acquireLock, listDigests, loadManifest, updateManifest } from './store.js'
+import { acquireLock, atomicWriteJson, ensureDir, listDigests, loadManifest, readJson, updateManifest } from './store.js'
+import { SCHEMA_VERSION } from './schema.js'
 import { trace } from './trace.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -53,10 +54,33 @@ export function apply(ctx, rawConfig) {
       const hit = registry.get(resolved.root)
       if (hit) return hit    // 热路径：不写 trace
 
-      trace('ensure:new', { root: resolved.root, id: resolved.workspaceId, temporary: resolved.temporary })
-      // S5：数据目录必须落在工作区之内（node:fs 不受 ctx.fs 沙箱保护，这里自建边界）
+      trace('ensure:new', { root: resolved.root, key: resolved.key, registered: resolved.registered, temporary: resolved.temporary })
+
+      const location = config.storage.location ?? 'global'
+      const base = storageBase(config)
+      if (location !== 'workspace' && !resolved.readOnly) {
+        // 注销后重新登记：新 key 无数据、但同一路径有旧数据 → 改挂过来
+        try {
+          if (!fs.existsSync(resolved.dir)) {
+            const liveKeys = new Set(readHostRegistry().map((w) => w.workspaceId))
+            const rb = rebindByRoot({ base, key: resolved.key, root: resolved.root, liveKeys, deps: { atomicWriteJson, ensureDir } })
+            if (rb.rebound) trace('storage:rebind', { from: rb.from, to: resolved.key, root: resolved.root })
+          }
+          upsertIndex(base, {
+            key: resolved.key,
+            root: resolved.identityRoot ?? resolved.root,
+            title: resolved.title,
+            registered: resolved.registered,
+            location,
+          }, { atomicWriteJson, ensureDir })
+        } catch (e) {
+          trace('storage:index-error', { message: String(e?.message ?? e).slice(0, 160) })
+        }
+      }
+
+      // 数据目录必须落在预期根内（node:fs 不受 ctx.fs 沙箱保护，自建边界）
       try {
-        assertInside(resolved.root, resolved.dir, 'memory dir')
+        assertInside(location === 'workspace' ? resolved.root : base, resolved.dir, 'memory dir')
       } catch (e) {
         trace('safety:escape', { root: resolved.root, dir: resolved.dir })
         resolved.readOnly = true
@@ -67,16 +91,6 @@ export function apply(ctx, rawConfig) {
         : acquireLock(resolved.dir)
       trace('ensure:lock', { root: resolved.root, readOnly: lock.readOnly, holderPid: lock.holder?.pid, holderLease: lock.holder?.leaseExpiresAt })
       const logger = loggerFor(resolved.dir)
-
-      // v3.1.2.1：拿到写锁后、建 Store 之前完成 v1→v2 迁移（此刻无并发写者）
-      let migration = { migrated: false }
-      try {
-        if (!lock.readOnly && needsMigration(resolved.dir)) migration = migrateWorkspace(resolved.dir)
-        if (migration.migrated) trace('migrate:v1_v2', migration.stats)
-      } catch (e) {
-        trace('migrate:error', { message: String(e?.message ?? e).slice(0, 200) })
-        lock.readOnly = true
-      }
 
       const entry = {
         ws: resolved,
@@ -455,180 +469,161 @@ export function apply(ctx, rawConfig) {
   try {
     const commandDef = {
       name: 'workmemory',
-      description: 'WorkMemory 工作区记忆：status / brief / items / review / stats / compact / verify / backup',
-      input: { hint: 'status | brief | items [type] | review | confirm <id> | reject <id> | stats | compact [days] | verify | backup | backfill | rebuild-items | distill-backfill [sessions]' },
+      description: 'WorkMemory：brief / review / export / storage / doctor / clear',
+      input: { hint: 'brief | review [confirm <id> | reject <id>] | export [--out <file>] | storage [path | list | gc] | doctor | clear --yes' },
       handler: async ({ agent, rawInput }) => {
-        const parts = String(rawInput ?? '').trim().split(/\s+/)
-        const cmd = parts[0] || 'status'
+        const parts = String(rawInput ?? '').trim().split(/\s+/).filter(Boolean)
+        const cmd = parts[0] || 'brief'
         const entry = ensureWorkspace(agent?.session?.header?.cwd)
         if (!entry) return { kind: 'error', text: 'WorkMemory: 无法解析工作区（cwd 缺失）' }
 
+        /* 1. 看简报（与自动注入内容一致） */
         if (cmd === 'brief') {
           const text = buildBrief({ ws: entry.ws, digests: listDigests(entry.ws.dir), items: entry.items.list(), config })
           return { kind: 'success', text: text || '（简报为空）' }
         }
-        if (cmd === 'items') {
-          const type = parts[1]
-          const all = entry.items.list({ type, limit: 50 })
-          if (all.length === 0) return { kind: 'success', text: `（没有${type ? ` ${type} ` : ''}记忆项）` }
-          const lines = all.map((i) => `[M${String(i.id).slice(-4)}] ${i.status}/${i.type} ${i.text}${i.evidence?.length ? ` (${i.evidence.length} 证据)` : ''}`)
-          return { kind: 'success', text: lines.join('\n') }
-        }
+
+        /* 2. 看待确认条目，并按 4 位 id 确认/否掉 */
         if (cmd === 'review') {
+          const action = parts[1]
+          if (action === 'confirm' || action === 'reject') {
+            const want = parts[2]
+            if (!want) return { kind: 'error', text: `用法：/memory review ${action} <id>` }
+            const target = entry.items.list().find((i) => i.id === want || String(i.id).slice(-4) === want)
+            if (!target) return { kind: 'error', text: `找不到记忆项 ${want}` }
+            const next = action === 'confirm'
+              ? { ...target, status: 'active', authority: 'user_confirmed', updatedAt: Date.now(), rev: (target.rev ?? 1) + 1 }
+              : { ...target, status: 'invalid', updatedAt: Date.now(), rev: (target.rev ?? 1) + 1 }
+            entry.items.append(next)
+            return { kind: 'success', text: `[M${String(next.id).slice(-4)}] → ${next.status}` }
+          }
           const pending = entry.items.list({ status: 'pending', limit: 20 })
           if (pending.length === 0) return { kind: 'success', text: '（没有待确认的记忆）' }
           const lines = pending.map((i) => `[M${String(i.id).slice(-4)}] ${i.type} ${i.text}`)
-          return { kind: 'success', text: `${lines.join('\n')}\n\n用 /workmemory confirm <id> 或 reject <id> 处理（id 取方括号内 4 位）` }
-        }
-        if (cmd === 'task') {
-          const sub = parts[1]
-          if (sub === 'new') {
-            const title = parts.slice(2).join(' ').trim()
-            if (!title) return { kind: 'error', text: '用法：/workmemory task new <标题>' }
-            if (entry.readOnly) return { kind: 'error', text: 'WorkMemory: 只读模式' }
-            const t = entry.entities.createTask({ title, sessionId: entry.sessionId })
-            setActiveTask(entry, t, 'manual')
-            return { kind: 'success', text: `已新建任务：${t.title}（${t.id.slice(-6)}）` }
-          }
-          const cur = pickTaskForEntry(entry)
-          if (!cur) return { kind: 'success', text: '（当前没有任务；用 /workmemory task new <标题> 新建）' }
-          if (sub === 'done' || sub === 'pause' || sub === 'abandon') {
-            if (entry.readOnly) return { kind: 'error', text: 'WorkMemory: 只读模式' }
-            const status = sub === 'done' ? 'done' : sub === 'pause' ? 'paused' : 'abandoned'
-            const next = entry.entities.updateTask(cur.id, { status })
-            entry.entities.snapshot(next)
-            return { kind: 'success', text: `任务「${next.title}」→ ${next.status}` }
-          }
-          const lines = [`${cur.title}（${cur.status}）`]
-          if (cur.objective) lines.push(`目标：${cur.objective}`)
-          if (cur.progress?.length) lines.push(`进度：\n${cur.progress.map((p) => `- ${p}`).join('\n')}`)
-          if (cur.nextSteps?.length) lines.push(`下一步：\n${cur.nextSteps.map((p) => `- ${p}`).join('\n')}`)
-          if (cur.blockers?.length) lines.push(`阻塞：\n${cur.blockers.map((p) => `- ${p}`).join('\n')}`)
-          lines.push(`下一步动作：${cur.nextSteps?.[0] ?? '—'}`)
-          lines.push(`活跃会话：${String(cur.activeSessionId ?? '—').slice(0, 12)} · 最近活动：${new Date(cur.lastActivityAt ?? cur.updatedAt ?? Date.now()).toISOString().slice(0, 16)}`)
-          lines.push(`会话：${(cur.sessionIds ?? []).length} 个`)
-          return { kind: 'success', text: lines.join('\n') }
-        }
-        if (cmd === 'confirm' || cmd === 'reject') {
-          const want = parts[1]
-          if (!want) return { kind: 'error', text: '用法：/workmemory confirm <id> | reject <id>' }
-          const target = entry.items.list().find((i) => i.id === want || String(i.id).slice(-4) === want)
-          if (!target) return { kind: 'error', text: `找不到记忆项 ${want}` }
-          const next = cmd === 'confirm'
-            ? { ...target, status: 'active', authority: 'user_confirmed', updatedAt: Date.now(), rev: (target.rev ?? 1) + 1 }
-            : { ...target, status: 'invalid', updatedAt: Date.now(), rev: (target.rev ?? 1) + 1 }
-          entry.items.append(next)
-          return { kind: 'success', text: `[M${String(next.id).slice(-4)}] → ${next.status}` }
-        }
-        if (cmd === 'rebuild-items') {
-          if (entry.readOnly) return { kind: 'error', text: 'WorkMemory: 当前工作区为只读模式（锁被占用）' }
-          // v3.1：只重抽规则来源的条目，LLM 蒸馏与人工确认结果不受影响
-          const dropped = entry.items.dropWhere((i) => i.origin === 'rule')
-          updateManifest(entry.ws.dir, (m) => { m.itemCursors = {} })
-          ingestFor(entry).backfilled.delete(`${entry.ws.workspaceId}:${entry.ws.root}`)
-          const r = await ingestFor(entry).backfill(entry.ws)
-          return { kind: 'success', text: `规则条目已重抽：移除 ${dropped} 条，回填 ${JSON.stringify(r)}，现有 ${entry.items.list().length} 条` }
-        }
-        if (cmd === 'backfill') {
-          if (entry.readOnly) return { kind: 'error', text: 'WorkMemory: 当前工作区为只读模式（锁被占用）' }
-          ingestFor(entry).backfilled.delete(`${entry.ws.workspaceId}:${entry.ws.root}`)
-          const r = await ingestFor(entry).backfill(entry.ws)
-          return { kind: 'success', text: `回填完成：${JSON.stringify(r)}` }
-        }
-        if (cmd === 'queue') {
-          const sub = parts[1]
-          if (sub === 'retry') {
-            const n = ingestFor(entry).queueRetry(entry.ws)
-            return { kind: 'success', text: `已重置 ${n} 个失败会话，重新排队` }
-          }
-          if (sub === 'run') {
-            if (entry.readOnly) return { kind: 'error', text: 'WorkMemory: 当前工作区为只读模式（锁被占用）' }
-            const n = Number(parts[2]) || config.backfill.maxSessionsPerRun
-            const r = await ingestFor(entry).processQueue(entry.ws, {
-              maxSessions: n,
-              maxChunks: config.backfill.maxTotalChunksPerRun,
-            })
-            return { kind: 'success', text: `队列推进：${JSON.stringify(r)}` }
-          }
-          const s = ingestFor(entry).queueStatus(entry.ws)
           return {
             kind: 'success',
-            text: [
-              `历史队列：共 ${s.total} 个会话（待处理 ${s.pending} / 已完成 ${s.done} / 失败 ${s.failed}）`,
-              `已蒸馏 ${s.chunks} 段 · 每轮预算 ${config.backfill.maxSessionsPerRun} 会话 × ${config.backfill.maxTotalChunksPerRun} 段`,
-              '用 /memory queue run [n] 继续推进，/memory queue retry 重试失败项',
-            ].join('\n'),
+            text: `${lines.join('\n')}\n\n确认：/memory review confirm <id>\n否掉：/memory review reject <id>`,
           }
         }
-        if (cmd === 'distill-backfill') {
-          if (entry.readOnly) return { kind: 'error', text: 'WorkMemory: 当前工作区为只读模式（锁被占用）' }
-          const n = Number(parts[1]) || 3
-          const r = await ingestFor(entry).distillBackfill(entry.ws, { maxSessions: n })
-          return { kind: 'success', text: `历史蒸馏：${JSON.stringify(r)}（会话上限 ${n}，每会话最多 2 段）` }
+
+        /* 3. 导出（只读） */
+        if (cmd === 'export') {
+          const outArg = parts.indexOf('--out')
+          const def = path.join(dshHome(), 'exports', `workmemory-${(entry.ws.key ?? 'ws').slice(0, 12)}-${new Date().toISOString().slice(0, 10)}.json`)
+          const outFile = outArg > 0 && parts[outArg + 1] ? path.resolve(parts[outArg + 1]) : def
+          const items = entry.items.list()
+          const digests = listDigests(entry.ws.dir)
+          const manifest = readJson(path.join(entry.ws.dir, 'manifest.json'), {})
+          const entities = readJsonlFile(path.join(entry.ws.dir, 'entities.jsonl'))
+          atomicWriteJson(outFile, {
+            format: 'workmemory-export',
+            version: 1,
+            exportedAt: Date.now(),
+            workspace: { key: entry.ws.key, root: entry.ws.root, title: entry.ws.title, workspaceId: entry.ws.workspaceId ?? null },
+            schemaVersion: SCHEMA_VERSION,
+            items,
+            entities,
+            digests,
+            manifest,
+            checksum: { items: items.length, entities: entities.length, digests: digests.length },
+          })
+          trace('storage:export', { file: outFile, items: items.length })
+          return { kind: 'success', text: `已导出 ${items.length} 条记忆 → ${outFile}` }
         }
-        if (cmd === 'compact') {
-          const days = Number(parts[1]) || 90
-          const r = entry.items.compact({ olderThanDays: days })
-          return { kind: 'success', text: `淘汰完成：归档 ${r.archived} 条，保留 ${r.kept} 条（阈值 ${days} 天，只淘汰 invalid/superseded）` }
-        }
-        if (cmd === 'verify') {
-          const file = path.join(entry.ws.dir, 'items.jsonl')
-          let lines = 0
-          let bad = 0
-          let dup = 0
-          let noEv = 0
-          const ids = new Set()
-          try {
-            for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-              if (!line.trim()) continue
-              lines += 1
-              try {
-                const it = JSON.parse(line)
-                if (ids.has(it.id)) dup += 1
-                ids.add(it.id)
-                if (!it.evidence?.length) noEv += 1
-              } catch { bad += 1 }
+
+        /* 4. 数据位置：path / list / gc */
+        if (cmd === 'storage') {
+          const sub = parts[1] ?? 'path'
+          if (sub === 'path') {
+            return { kind: 'success', text: `${entry.ws.dir}\n（location=${config.storage.location ?? 'global'}，key=${entry.ws.key ?? '-'}）` }
+          }
+          if (sub === 'list') {
+            const idx = readIndex(storageBase(config))
+            const rows = Object.entries(idx.workspaces)
+            if (rows.length === 0) return { kind: 'success', text: '（索引为空）' }
+            return {
+              kind: 'success',
+              text: rows.map(([k, v]) => `${v.registered ? '●' : '○'} ${k.slice(0, 12)}  ${v.title}  ${v.root}`).join('\n'),
             }
-          } catch { /* 没有 items.jsonl */ }
-          const m = loadManifest(entry.ws.dir)
-          return {
-            kind: 'success',
-            text: [
-              `items.jsonl: ${lines} 行 · 损坏 ${bad} · 重复 id ${dup} · 无证据 ${noEv}`,
-              `manifest: rulesVersion=${m.rulesVersion ?? '?'} · cursors=${Object.keys(m.cursors ?? {}).length}`,
-              `digests: ${listDigests(entry.ws.dir).length}`,
-            ].join('\n'),
           }
-        }
-        if (cmd === 'backup') {
-          const ts = new Date().toISOString().replace(/[:.]/g, '-')
-          // S5：备份目录也受边界约束（越界抛 PATH_ESCAPE，由命令层捕获成错误提示）
-          const dst = safeJoin(entry.ws.dir, 'backup', ts)
-          fs.mkdirSync(dst, { recursive: true })
-          for (const f of ['items.jsonl', 'manifest.json', 'workspace.json']) {
-            try { fs.copyFileSync(path.join(entry.ws.dir, f), path.join(dst, f)) } catch { /* 缺失即跳过 */ }
+          if (sub === 'gc') {
+            const idx = readIndex(storageBase(config))
+            const wantPurge = parts.includes('--purge') && parts.includes('--yes')
+            const daysArg = parts.indexOf('--older-than')
+            const days = daysArg > 0 ? Number(parts[daysArg + 1]) : 30
+            const cutoff = Date.now() - (Number.isFinite(days) ? days : 30) * 864e5
+            const stale = Object.entries(idx.workspaces).filter(([, v]) => (v.lastSeenAt ?? 0) < cutoff)
+            if (stale.length === 0) return { kind: 'success', text: `没有超过 ${days} 天未出现的工作区` }
+            for (const [k] of stale) {
+              delete idx.workspaces[k]
+              if (wantPurge) {
+                try { fs.rmSync(path.join(storageBase(config), k), { recursive: true, force: true }) } catch { /* 忽略 */ }
+              }
+            }
+            atomicWriteJson(path.join(storageBase(config), 'index.json'), idx)
+            trace('storage:gc', { removed: stale.length, purge: wantPurge, days })
+            return {
+              kind: 'success',
+              text: `清理索引 ${stale.length} 项${wantPurge ? '（含数据）' : '（仅索引，数据保留）'}`,
+            }
           }
-          return { kind: 'success', text: `已备份到 ${dst}` }
+          return { kind: 'error', text: '用法：/memory storage path | list | gc' }
         }
-        if (cmd === 'stats') {
+
+        /* 5. 体检：统计 + 校验 + 备份（原 stats / verify / backup 合并） */
+        if (cmd === 'doctor') {
           const all = entry.items.list()
           const by = (s) => all.filter((i) => i.status === s).length
           const byType = {}
           for (const i of all) byType[i.type] = (byType[i.type] ?? 0) + 1
+          const knowledge = all.filter((i) => ['rationale', 'lesson', 'constraint', 'scope'].includes(i.knowledgeKind)).length
+          const noEvidence = all.filter((i) => !(i.evidence ?? []).length).length
           const m = loadManifest(entry.ws.dir)
-          return {
-            kind: 'success',
-            text: [
-              `items: ${all.length}（active ${by('active')} / pending ${by('pending')} / invalid ${by('invalid')} / superseded ${by('superseded')}）`,
-              `按类型: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ') || '—'}`,
-              `digests: ${listDigests(entry.ws.dir).length}`,
-              `rulesVersion: ${m.rulesVersion ?? '?'} · route: ${m.route ? `${m.route.provider}/${m.route.model}` : '—'}`,
-              `last backfill: ${m.lastBackfillAt ? new Date(m.lastBackfillAt).toISOString() : 'never'}`,
-            ].join('\n'),
+          const digests = listDigests(entry.ws.dir)
+
+          const lines = [
+            `条目 ${all.length}（active ${by('active')} / pending ${by('pending')} / invalid ${by('invalid')} / superseded ${by('superseded')}）`,
+            `类型 ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ') || '—'}`,
+            `知识形态 ${all.length ? Math.round((knowledge / all.length) * 100) : 0}%（${knowledge}/${all.length}）· 无证据 ${noEvidence}`,
+            `会话摘要 ${digests.length} · schema ${SCHEMA_VERSION} · rules ${m.rulesVersion ?? '?'}`,
+            `路由 ${m.route ? `${m.route.provider}/${m.route.model}` : '—'} · 上次回填 ${m.lastBackfillAt ? new Date(m.lastBackfillAt).toISOString().slice(0, 16) : 'never'}`,
+          ]
+
+          if (entry.readOnly) {
+            lines.push('备份：跳过（只读模式）')
+          } else {
+            try {
+              const ts = new Date().toISOString().replace(/[:.]/g, '-')
+              const dst = safeJoin(entry.ws.dir, 'backup', ts)
+              fs.mkdirSync(dst, { recursive: true })
+              for (const f of ['items.jsonl', 'manifest.json', 'workspace.json']) {
+                try { fs.copyFileSync(path.join(entry.ws.dir, f), path.join(dst, f)) } catch { /* 缺失跳过 */ }
+              }
+              lines.push(`备份 ${dst}`)
+            } catch (e) {
+              lines.push(`备份失败：${e?.message ?? e}`)
+            }
           }
+          return { kind: 'success', text: lines.join('\n') }
         }
-        const digest = listDigests(entry.ws.dir)
-        return { kind: 'success', text: renderStatus({ ws: entry.ws, digests: digest, items: entry.items.list(), manifest: loadManifest(entry.ws.dir), config }) }
+
+        /* 6. 清除：删掉本工作区全部记忆（等于不使用记忆） */
+        if (cmd === 'clear') {
+          if (!parts.includes('--yes')) {
+            return { kind: 'error', text: '这会删除本工作区的全部记忆（不可恢复）。确认执行：/memory clear --yes' }
+          }
+          const dir = entry.ws.dir
+          try {
+            fs.rmSync(dir, { recursive: true, force: true })
+          } catch (e) {
+            return { kind: 'error', text: `清除失败：${e?.message ?? e}` }
+          }
+          registry.delete(entry.ws.root)
+          trace('storage:clear', { dir, key: entry.ws.key })
+          return { kind: 'success', text: `已清空 ${dir}\n本工作区没有记忆，插件不再注入任何历史内容。` }
+        }
+
+        return { kind: 'error', text: '可用命令：brief | review | export | storage | doctor | clear' }
       },
     }
     ctx.effect(() => {
@@ -700,4 +695,13 @@ export function apply(ctx, rawConfig) {
   }
 
   ctx.logger?.info?.('workmemory loaded')
+}
+
+/** 读 JSONL 文件为数组（缺失返回空）。 */
+function readJsonlFile(file) {
+  try {
+    return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  } catch {
+    return []
+  }
 }

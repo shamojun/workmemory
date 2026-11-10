@@ -5,13 +5,13 @@
 
 export const DEFAULTS = {
   storage: {
-    dir: '.dsh/memory',        // 相对工作区根
+    location: 'global',        // global（默认，用户目录） | workspace（工作区内）
     autoBackup: true,
   },
   workspace: {
     root: '',                  // 显式工作区根；空 = 自动解析
     identityMode: 'auto',      // auto | git | dir-id | explicit
-    // 注：v3.0 曾有 isolateWorktrees，但从未实现；Worktree 目前**不共享存储**，
+    // 注：Worktree 之间**不共享存储**，
     // 每个实际目录各自一份 .dsh/memory（v3.1 修订方案 P0-4）。
   },
   ingest: {
