@@ -68,13 +68,15 @@ config:
 
 ## 命令
 
-| 类型 | 内容 |
+| 命令 | 内容 |
 |---|---|
 | 用户命令 | `/memory brief` · `review [confirm\|reject <id>]` · `export` · `storage [path\|list\|gc]` · `doctor` · `clear --yes` |
-| 模型工具 | `memory_recall` · `memory_status` · `memory_timeline` · `memory_task` |
 
 命令只是诊断入口，**日常使用不需要执行任何命令**。
 `clear --yes` 是唯一破坏性命令，会删除本工作区全部记忆。
+
+插件另外向模型暴露 4 个**只读**工具（recall / status / timeline / task），由模型自行调用，
+用户无需关心；清单见[需求与设计](docs/WorkMemory-需求与设计.md) §4。
 
 ## 开发
 
