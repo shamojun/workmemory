@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "workmemory/task.schema.json",
+  "title": "WorkMemory Task (v3.1.2.1-final)",
+  "description": "字段级约束。完成证据与状态迁移不变式见 lib/schema.js validateTask。",
+  "type": "object",
+  "required": ["id", "title", "status", "revision"],
+  "additionalProperties": true,
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "schemaVersion": { "const": 2 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "objective": { "type": "string", "maxLength": 400 },
+    "status": { "enum": ["todo", "active", "paused", "blocked", "done", "abandoned"] },
+    "statusReason": { "type": "string", "maxLength": 200, "description": "C5：派生 TaskEvent 时作为 reason" },
+    "progress": { "type": "array", "items": { "type": "string" }, "maxItems": 50 },
+    "nextSteps": { "type": "array", "items": { "type": "string" }, "maxItems": 50 },
+    "blockers": { "type": "array", "items": { "type": "string" }, "maxItems": 20 },
+    "keywords": { "type": "array", "items": { "type": "string" }, "maxItems": 20 },
+    "sessionIds": { "type": "array", "items": { "type": "string" } },
+    "activeSessionId": { "type": ["string", "null"], "description": "T5：必须属于 sessionIds" },
+    "lastSessionId": { "type": ["string", "null"] },
+    "completionCriteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "type": {
+            "enum": ["user_confirmation", "command_exit_code", "file_exists", "file_hash", "http_status", "consecutive_days", "manual_review"]
+          },
+          "required": { "type": "boolean" },
+          "config": { "type": "object" }
+        }
+      }
+    },
+    "criterionResults": { "type": "array" },
+    "completionEvidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "criterionId": { "type": "string" },
+          "type": { "enum": ["user_confirmation", "tool_result"] },
+          "status": { "enum": ["candidate", "verified", "rejected", "expired"] },
+          "sessionId": { "type": "string" },
+          "taskId": { "type": "string" },
+          "tool": { "type": "string" },
+          "resultRef": { "type": "string" },
+          "observedValue": {},
+          "matched": { "type": "boolean" },
+          "verifiedAt": { "type": "integer" }
+        }
+      }
+    },
+    "completedAt": { "type": ["integer", "null"], "description": "status=done 时必填；否则必须为 null" },
+    "completedBy": { "enum": ["user", "tool", null] },
+    "reopenedAt": { "type": ["integer", "null"] },
+    "revision": { "type": "integer", "minimum": 1 },
+    "createdAt": { "type": "integer" },
+    "updatedAt": { "type": "integer" },
+    "lastActivityAt": { "type": "integer" }
+  }
+}

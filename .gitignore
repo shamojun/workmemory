@@ -1,0 +1,17 @@
+# 本地/运行期数据，绝不入库
+.dsh/
+.dsh-probe/
+probe/
+archive/
+
+# 文档产物（Word 由 md 生成）
+*.docx
+docs/archive/
+
+# 依赖与杂项
+node_modules/
+*.log
+*.tmp-*
+.DS_Store
+Thumbs.db
+docs/private/

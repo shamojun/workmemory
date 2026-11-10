@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "workmemory/evidence.schema.json",
+  "title": "WorkMemory Evidence (v3.1.2.1-final)",
+  "type": "object",
+  "required": ["id", "sessionId", "seq", "sourceRole", "quote", "verifyState"],
+  "additionalProperties": true,
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "seq": { "type": "integer" },
+    "sourceRole": { "enum": ["user", "assistant", "tool"] },
+    "quote": { "type": "string", "minLength": 4 },
+    "sourceHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "quoteHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "sourceVersion": { "type": "string" },
+    "verifyState": { "enum": ["verified", "unverifiable", "mismatch", "stale"] },
+    "createdAt": { "type": "integer" },
+    "verifiedAt": { "type": ["integer", "null"], "description": "verifyState=verified 时必填" }
+  }
+}

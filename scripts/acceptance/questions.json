@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "note": "30 天验收问题集。known 由脚本运行时自动判定（库里是否存在含 expect 关键词的条目），无需人工标注。",
+  "questions": [
+    { "id": "q1", "q": "我们之前定了什么约束？", "expect": ["不依赖", "第三方"], "type": "constraint" },
+    { "id": "q2", "q": "插件包名最后怎么定的？", "expect": ["workmemory", "npm", "包名"], "type": "decision" },
+    { "id": "q3", "q": "inject 漏了会怎么样？", "expect": ["inject", "tools"], "type": "gotcha" },
+    { "id": "q4", "q": "为什么不能用 ctx.fs 写文件？", "expect": ["沙箱", "fs", "FS_SANDBOX"], "type": "gotcha" },
+    { "id": "q5", "q": "锁被占用会怎样？", "expect": ["锁", "只读", "stale", "陈旧"], "type": "gotcha" },
+    { "id": "q6", "q": "maxTokens 设小了会出什么问题？", "expect": ["maxtokens", "截断", "json"], "type": "gotcha" },
+    { "id": "q7", "q": "记忆数据存在哪里？", "expect": [".dsh", "jsonl", "memory"], "type": "state" },
+    { "id": "q8", "q": "规则版本变了会怎么处理？", "expect": ["rulesversion", "重抽", "重建", "origin"], "type": "decision" },
+    { "id": "q9", "q": "还有哪些没做的事？", "expect": ["未决", "待办", "还没"], "type": "open" },
+    { "id": "q10", "q": "证据是怎么校验的？", "expect": ["证据", "quote", "逐字", "子串"], "type": "decision" }
+  ]
+}

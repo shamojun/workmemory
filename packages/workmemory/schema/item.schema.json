@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "workmemory/item.schema.json",
+  "title": "WorkMemory Item (v3.1.2.1-final)",
+  "description": "字段级约束。跨字段不变式（C1-C8、I1-I7）见 lib/schema.js validateItem。",
+  "type": "object",
+  "required": [
+    "id", "schemaVersion", "type", "text", "source", "origin", "authority",
+    "confirmationStatus", "assertionMode", "confidence", "importance", "status",
+    "taskAssignment", "evidence", "revision", "observedAt", "recordedAt"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "schemaVersion": { "const": 2 },
+    "type": { "enum": ["state", "decision", "open", "gotcha", "preference", "constraint", "timeline"] },
+    "text": { "type": "string", "minLength": 4 },
+    "source": { "enum": ["user", "assistant"], "description": "tool 为 reserved（C6），validator 拒绝" },
+    "origin": { "enum": ["rule", "llm", "backfill", "manual", "migration"] },
+    "authority": { "enum": ["user_explicit", "user_derived", "assistant"], "description": "tool_verified 为 reserved（C6）" },
+    "confirmationStatus": { "enum": ["unconfirmed", "confirmed", "rejected"] },
+    "confirmedBy": { "enum": ["user"] },
+    "assertionMode": {
+      "enum": ["fact_assertion", "explicit_rule", "decision", "temporary_intent", "hypothesis"],
+      "description": "question 不入库；decision 类必须与 decision 对象配对（C4）"
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "importance": { "enum": ["critical", "high", "medium", "low"], "description": "C1：分值由 deriveImportanceScore 派生，不入库" },
+    "status": { "enum": ["active", "pending", "stale", "superseded", "invalid"] },
+    "taskId": { "type": ["string", "null"], "description": "C3：taskAssignment 的镜像" },
+    "taskAssignment": {
+      "type": "object",
+      "required": ["status", "taskId", "confidence", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["resolved", "unresolved", "rejected"] },
+        "taskId": { "type": ["string", "null"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "reason": {
+          "enum": ["explicit-title", "unique-keyword", "active-task-and-topic", "ambiguous", "no-candidate", "invalid-id", "insufficient-evidence"]
+        },
+        "supportingEvidence": { "type": "array", "items": { "type": "string" } },
+        "candidateTaskIds": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "decision": {
+      "type": ["object", "null"],
+      "required": ["scope", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "scope": { "enum": ["permanent", "temporary", "experiment"] },
+        "status": { "enum": ["active", "expired", "rejected", "superseded"] },
+        "validFrom": { "type": "integer" },
+        "validUntil": { "type": ["integer", "null"], "description": "temporary 必填；permanent 必须为 null" },
+        "endCondition": { "type": "string", "description": "experiment 必填" },
+        "baseDecisionId": { "type": ["string", "null"] }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "evidence.schema.json" }
+    },
+    "topics": { "type": "array", "items": { "type": "string" }, "maxItems": 12 },
+    "revision": { "type": "integer", "minimum": 1, "description": "C2：与 legacy rev 等价，读取兼容" },
+    "supersedes": { "type": ["string", "null"], "description": "C8：唯一的取代字段" },
+    "supersededBy": { "type": ["string", "null"] },
+    "provenance": {
+      "type": "object",
+      "required": ["firstSeenAt", "sourceKinds", "mergeCount"],
+      "additionalProperties": false,
+      "properties": {
+        "firstSeenAt": { "type": "integer" },
+        "sourceKinds": { "type": "array", "items": { "enum": ["user", "assistant", "tool"] } },
+        "mergeCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "observedAt": { "type": "integer", "description": "M1：原始事件时间" },
+    "recordedAt": { "type": "integer", "description": "M1：写入时间，必须 >= observedAt" },
+    "createdAt": { "type": "integer" },
+    "updatedAt": { "type": "integer" },
+    "extractorVersion": { "type": ["integer", "string", "null"] },
+    "distillerVersion": { "type": ["integer", "string", "null"] }
+  }
+}
