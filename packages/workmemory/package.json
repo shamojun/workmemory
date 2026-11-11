@@ -1,7 +1,18 @@
 {
   "name": "@shamojun/workmemory",
   "version": "0.1.0",
-  "private": true,
+  "description": "Workspace long-term memory plugin for DeepSeek Harness: records rationale, lessons and constraints that files never capture, and injects them automatically on every turn.",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "cordis",
+    "plugin",
+    "memory",
+    "long-term-memory",
+    "workspace",
+    "agent"
+  ],
+  "license": "Apache-2.0",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -10,8 +21,27 @@
     },
     "./package.json": "./package.json"
   },
+  "files": [
+    "lib",
+    "schema",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5"
   },
-  "license": "Apache-2.0"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shamojun/workmemory.git",
+    "directory": "packages/workmemory"
+  },
+  "homepage": "https://github.com/shamojun/workmemory#readme",
+  "bugs": {
+    "url": "https://github.com/shamojun/workmemory/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
