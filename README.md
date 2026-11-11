@@ -21,9 +21,19 @@ WorkMemory 是 DeepSeek Harness 的工作区长期记忆插件。在同一工作
 
 ## 安装
 
-插件通过 DSH 的 profile 加载，**无需 npm 账号**。
+插件通过 DSH 的 profile 加载，**无需 npm 账号**。三种方式任选其一。
 
-### 从仓库安装（推荐）
+### 通过插件索引安装（可视化）
+
+在 DSH 侧栏「插件 → 实验性插件」启用**自定义插件索引**，到「发现」标签页添加：
+
+```
+https://raw.githubusercontent.com/shamojun/workmemory/main/market/index.json
+```
+
+随后在列表中安装 WorkMemory。DSH 目前没有官方索引，「发现」只列出用户添加的源。
+
+### 从仓库安装（命令行）
 
 ```bash
 git clone https://github.com/shamojun/workmemory.git

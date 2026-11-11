@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "title": { "en": "shamojun DSH bundles", "zh": "shamojun DSH 组合包" },
+  "description": {
+    "en": "Bundles maintained by shamojun for DeepSeek Harness.",
+    "zh": "shamojun 维护的 DeepSeek Harness 组合包。"
+  },
+  "metadata": {
+    "categories": {
+      "memory": { "title": { "en": "Memory", "zh": "记忆" } }
+    },
+    "labels": {
+      "experimental": { "title": { "en": "Experimental", "zh": "实验性" } }
+    }
+  },
+  "plugins": [
+    {
+      "name": "@shamojun/workmemory",
+      "title": { "en": "WorkMemory", "zh": "WorkMemory 工作区长期记忆" },
+      "description": {
+        "en": "Records the knowledge files never capture — rationale, lessons, constraints — and injects it automatically so answer quality does not decay over long-running workspaces.",
+        "zh": "记录文件里不会写的知识——取舍理由、失败教训、边界约束——并自动注入，使长期工作区的回答质量不随时长衰减。"
+      },
+      "icon": "https://raw.githubusercontent.com/shamojun/workmemory/main/packages/workmemory/icon.svg",
+      "author": "shamojun",
+      "homepage": "https://github.com/shamojun/workmemory",
+      "repository": {
+        "url": "https://github.com/shamojun/workmemory",
+        "directory": "packages/workmemory"
+      },
+      "metadata": {
+        "category": "memory",
+        "labels": ["experimental"],
+        "keywords": ["memory", "long-term-memory", "workspace", "agent", "rationale"],
+        "sortKeys": {}
+      },
+      "dist-tags": { "latest": "0.1.0" },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1794384000,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/shamojun/workmemory",
+            "commit": "dad801537722ff8687b26a2f254495b67ae98e8a",
+            "path": "packages/workmemory"
+          },
+          "engines": { "dsh": "*" }
+        }
+      ]
+    }
+  ]
+}
