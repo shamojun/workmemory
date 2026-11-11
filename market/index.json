@@ -45,7 +45,7 @@
             "commit": "dad801537722ff8687b26a2f254495b67ae98e8a",
             "path": "packages/workmemory"
           },
-          "engines": { "dsh": "*" }
+          "engines": { "dsh": ">=0.2.0" }
         }
       ]
     }
