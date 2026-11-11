@@ -1,0 +1,6 @@
+# 将该文件内容追加到 DSH 的 cordis.patch.yml
+# 位置：~/.dsh/profiles/<profile>/cordis.patch.yml
+# 把 <profile-dir> 换成实际 profile 路径；Windows 用正斜杠
+- insert:
+    - id: workmemory
+      name: '<profile-dir>/plugins/workmemory/lib/index.js'

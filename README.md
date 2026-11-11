@@ -21,17 +21,50 @@ WorkMemory 是 DeepSeek Harness 的工作区长期记忆插件。在同一工作
 
 ## 安装
 
-将 `packages/workmemory` 复制至 DSH 的 profile 目录，并在 `cordis.patch.yml` 中注册：
+插件通过 DSH 的 profile 加载，**无需 npm 账号**。
+
+### 从仓库安装（推荐）
+
+```bash
+git clone https://github.com/shamojun/workmemory.git
+cd workmemory
+node packages/workmemory/sync.mjs
+```
+
+脚本做三件事：检查 profile 是否可解析宿主包、把插件复制到
+`~/.dsh/profiles/desktop/plugins/workmemory`、打印需要注册的配置片段。
+
+```bash
+node packages/workmemory/sync.mjs --profile <dir>   # profile 不在默认位置
+node packages/workmemory/sync.mjs --dry-run         # 只打印，不写入
+```
+
+### 手动安装
+
+将 `packages/workmemory` 复制到 `<profile>/plugins/` 即可。
+
+### 通过 npm（尚未发布）
+
+```bash
+npm i @shamojun/workmemory    # 发布后可用
+```
+
+### 注册
+
+在 `~/.dsh/profiles/<profile>/cordis.patch.yml` 中加入（或直接复制
+`packages/workmemory/cordis.snippet.yml`）：
 
 ```yaml
 - insert:
     - id: workmemory
-      name: '<绝对路径>/plugins/workmemory/lib/index.js'
+      name: '<profile>/plugins/workmemory/lib/index.js'
 ```
 
-插件必须置于 profile 目录内；直接引用仓库路径将导致 `@deepseek-ai/*` 依赖无法解析。
+插件需位于 profile 内。直接从仓库路径加载时，宿主的 `@deepseek-ai/*` 包无法解析，
+4 个模型工具会注册失败（核心功能不受影响）。
 
-安装完成后需完全退出并重新启动 DSH。插件不支持热更新。
+**安装完成后需完全退出并重新启动 DSH**，插件不支持热更新。
+
 
 ## 存储位置
 
