@@ -2,11 +2,13 @@
   "name": "@shamojun/workmemory",
   "version": "0.1.0",
   "description": "Workspace long-term memory plugin for DeepSeek Harness: records rationale, lessons and constraints that files never capture, and injects them automatically on every turn.",
+  "icon": "./icon.svg",
   "keywords": [
     "deepseek-harness",
     "dsh",
     "cordis",
     "plugin",
+    "bundle",
     "memory",
     "long-term-memory",
     "workspace",
@@ -19,11 +21,14 @@
     ".": {
       "default": "./lib/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "files": [
     "lib",
     "schema",
+    "icon.svg",
+    "cordis.patch.yml",
     "README.md"
   ],
   "engines": {
@@ -43,5 +48,10 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   }
 }

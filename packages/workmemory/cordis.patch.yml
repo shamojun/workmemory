@@ -1,0 +1,5 @@
+# WorkMemory：工作区长期记忆插件
+# 作为组合包（bundle）被安装时，DSH 读取本文件把插件挂到 profile。
+- insert:
+    - id: workmemory
+      name: '@shamojun/workmemory'
