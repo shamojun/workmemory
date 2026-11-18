@@ -1,0 +1,46 @@
+name: Publish to npm
+
+# 用 Automation Token 发布，绕开交互式 OTP：
+# 仓库 Settings → Secrets and variables → Actions → 新建 NPM_TOKEN，
+# 值取自 npmjs.com → Access Tokens → Generate New Token → Automation。
+# Automation token 发布时不需要二次认证。
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 校验 tag 与 package.json 版本一致
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver=$(node -p "require('./packages/workmemory/package.json').version")
+          echo "tag=$tag version=$ver"
+          if [ "$tag" != "$ver" ]; then
+            echo "::error::tag $tag 与 package.json 版本 $ver 不一致"
+            exit 1
+          fi
+
+      - name: 打包预检
+        working-directory: packages/workmemory
+        run: npm pack --dry-run
+
+      - name: 发布
+        working-directory: packages/workmemory
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish
